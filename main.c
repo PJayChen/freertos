@@ -6,7 +6,8 @@
 #include "task.h"
 #include "queue.h"
 #include "semphr.h"
-#include <string.h>
+//#include <string.h>
+#include <stddef.h>
 
 /* Filesystem includes */
 #include "filesystem.h"
@@ -29,6 +30,19 @@ typedef struct {
 typedef struct {
 	char ch;
 } serial_ch_msg;
+
+
+int
+strncmp(const char *s1, const char *s2, size_t n)
+{
+    for ( ; n > 0; s1++, s2++, --n)
+	if (*s1 != *s2)
+	    return ((*(unsigned char *)s1 < *(unsigned char *)s2) ? -1 : +1);
+	else if (*s1 == '\0')
+	    return 0;
+    return 0;
+}
+
 
 /* IRQ handler to handle USART2 interruptss (both transmit and receive
  * interrupts). */
@@ -132,36 +146,126 @@ void rs232_Tx_msg_task(void *pvParameters)
 	}
 }
 
+
 void shell_task(void *pvParameters)
 {
     serial_str_msg msg;
-	char ch;
-	int curr_char;
-	int done;
+	int fdout, fdin;
+    char str[100];
+    char echo_str[2] = {'\0', '\0'};
+    char cmd_str[10];
+    char data_str[100];
+    char newLine[3] = {'\r', '\n', '\0'};
+    char backspace[4] = {'\b', ' ', '\b', '\0'};
+    char noCMD[] = "Command not found\0";
+    char title[] = "shell>>";
+    char hello[] = "Hello World!!!!";
+    char ps_title[] = "PID\tstatus\t\tpriority\n\r";
+    char ch;
+    int curr_char;
+    int count;
+    int done;
 
-	/* Prepare the response message to be queued. */
-	//strcpy(msg.str, "Got:");
+    typedef enum{
+            NONE,       //default
+            TYPE ,      //type a char
+            ENTER,      //type enter
+            BACKSPACE,  //type backspace
+    }key_type;
+    key_type key;
 
-	while (1) {
-		curr_char = 0;
-		done = 0;
-		do {
-			/* Receive a byte from the RS232 port (this call will
-			 * block). */
-			ch = receive_byte();
-			msg.str[0] = ch;
-			msg.str[1] = '\0';
-			while (!xQueueSendToBack(serial_str_queue, &msg,
-		                         portMAX_DELAY));
 
-		} while (!done);
+    while (1) {
+        curr_char = 0;
+        done = 0;
+        str[0] = '\0';
 
-		/* Once we are done building the response string, queue the
-		 * response to be sent to the RS232 port.
-		 */
-		while (!xQueueSendToBack(serial_str_queue, &msg,
-		                         portMAX_DELAY));
-	}
+	    while (!xQueueSendToBack(serial_str_queue, &title, portMAX_DELAY));
+        
+        do {
+            /* Receive a byte from the RS232 port
+             */
+            ch = receive_byte();
+
+            /* Checking input char
+             */
+                        
+            if (curr_char >= 98 || (ch == '\r') || (ch == '\n')) {
+                key = ENTER;	
+            }
+            else if(ch != 127){
+                key = TYPE;
+            }else if(ch == 127 && curr_char > 0){
+                key = BACKSPACE;
+            }else key = NONE;
+                        
+            switch(key){
+                case TYPE:
+                    str[curr_char++] = ch;
+                    echo_str[0] = ch;
+                    msg.str[0] = ch;
+                    msg.str[1] = '\0';
+		            while (!xQueueSendToBack(serial_str_queue, &echo_str, portMAX_DELAY));
+                    break;
+                case BACKSPACE:
+                    while (!xQueueSendToBack(serial_str_queue, &backspace, portMAX_DELAY));
+                    curr_char--;
+                    str[curr_char] = '\0';
+                    break;
+                case ENTER:
+                    str[curr_char] = '\0';
+                    while (!xQueueSendToBack(serial_str_queue, &newLine, portMAX_DELAY));
+                    done = -1;	
+                    break;
+                    default:;
+            }//End of switch
+
+        } while (!done);
+
+
+        //------ cmd -------
+
+        if(!strncmp(str,"echo", 4)){
+            //remove the "echo " in the str[]
+            curr_char = 5;
+            while(str[curr_char] != '\0'){
+                str[curr_char - 5] = str[curr_char];
+                curr_char++;
+            }//End of while
+            str[curr_char - 5] = '\0';
+
+            while (!xQueueSendToBack(serial_str_queue, &str, portMAX_DELAY));
+                    
+        }else if(!strncmp(str,"ps", 2)){
+#if 0            
+            char tmp[16];
+            int i;
+            write(fdout, "-----------------------------\n\r\0",strLength("-----------------------------\n\r\0"));
+            write(fdout, &ps_title, strLength(ps_title));	
+            for(i = 0; i < task_count; i++) {
+                        
+                itoa(tasks[i].pid, tmp);
+                write(fdout, &tmp, strLength(tmp));
+                write(fdout, "\t", strLength("\t"));
+        
+                write(fdout, get_task_status(tasks[i].status), strLength(get_task_status(tasks[i].status)));
+                write(fdout, "\t", strLength("\t"));
+
+                itoa(tasks[i].priority, tmp);
+                write(fdout, &tmp, strLength(tmp));
+
+                write(fdout, &newLine, strLength(newLine));
+            }//End of for
+#endif            
+        }else if(!strncmp(str,"hello", 5)){
+            while (!xQueueSendToBack(serial_str_queue, &hello, portMAX_DELAY));
+        }else{
+            while (!xQueueSendToBack(serial_str_queue, &noCMD, portMAX_DELAY));
+        }//End of if
+        
+        while (!xQueueSendToBack(serial_str_queue, &newLine, portMAX_DELAY));
+
+    }//End of while
 }
 
 int main()
