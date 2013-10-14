@@ -150,7 +150,6 @@ void rs232_Tx_msg_task(void *pvParameters)
 void shell_task(void *pvParameters)
 {
     serial_str_msg msg;
-	int fdout, fdin;
     char str[100];
     char echo_str[2] = {'\0', '\0'};
     char cmd_str[10];
@@ -158,7 +157,7 @@ void shell_task(void *pvParameters)
     char newLine[3] = {'\r', '\n', '\0'};
     char backspace[4] = {'\b', ' ', '\b', '\0'};
     char noCMD[] = "Command not found\0";
-    char title[] = "shell>>";
+    char title[] = ":$ ";
     char hello[] = "Hello World!!!!";
     char ps_title[] = "PID\tstatus\t\tpriority\n\r";
     char ch;
@@ -168,7 +167,7 @@ void shell_task(void *pvParameters)
 
     typedef enum{
             NONE,       //default
-            TYPE ,      //type a char
+            ECHO ,      //echo the input char
             ENTER,      //type enter
             BACKSPACE,  //type backspace
     }key_type;
@@ -194,17 +193,15 @@ void shell_task(void *pvParameters)
                 key = ENTER;	
             }
             else if(ch != 127){
-                key = TYPE;
+                key = ECHO;
             }else if(ch == 127 && curr_char > 0){
                 key = BACKSPACE;
             }else key = NONE;
                         
             switch(key){
-                case TYPE:
+                case ECHO:
                     str[curr_char++] = ch;
                     echo_str[0] = ch;
-                    msg.str[0] = ch;
-                    msg.str[1] = '\0';
 		            while (!xQueueSendToBack(serial_str_queue, &echo_str, portMAX_DELAY));
                     break;
                 case BACKSPACE:
