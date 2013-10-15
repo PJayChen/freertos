@@ -13,6 +13,9 @@
 #include "filesystem.h"
 #include "fio.h"
 
+/* variable parameter function*/
+#include <stdarg.h>
+
 extern const char _sromfs;
 
 static void setup_hardware();
@@ -30,6 +33,70 @@ typedef struct {
 typedef struct {
 	char ch;
 } serial_ch_msg;
+
+
+//support from 0~999 integer to string
+void Myitoa(int in_num, char *out_str){
+    int tmp1, tmp2, i = 0;
+
+    if(in_num == 0){
+		out_str[i] = '0';
+		i++;
+    }else if(in_num > 0){
+        tmp1 = in_num % 100;
+        if((in_num - tmp1) / 100 != 0){
+        	out_str[i] = '0' + (in_num - tmp1) / 100;
+        	i++;
+		}
+		tmp2 = in_num % 10;
+		if((tmp1 - tmp2) / 10 != 0){
+            out_str[i] = '0' + (tmp1 - tmp2) / 10;
+            i++;
+		}
+        out_str[i] = '0' + tmp2;
+        i++;
+    }
+    out_str[i] = '\0';
+}
+
+
+/*simple printf, support int, char and string*/
+void MYprintf(const char *format, ...){
+	va_list ap;
+	va_start(ap, format);
+	int curr_ch = 0;
+	char out_ch[2] = {'\0', '\0'};
+	char percentage[] = "%";
+	char *str;
+	char str_num[10];
+	int out_int;
+
+	while( format[curr_ch] != '\0' ){
+		if(format[curr_ch] == '%'){
+			if(format[curr_ch + 1] == 's'){
+				str = va_arg(ap, char *);
+        	    while (!xQueueSendToBack(serial_str_queue, str, portMAX_DELAY)); 
+        	    //parameter(...,The address of a pointer that point to the string which been put in queue,...)
+			}else if(format[curr_ch + 1] == 'd'){
+				Myitoa(va_arg(ap, int), str_num);
+        	    while (!xQueueSendToBack(serial_str_queue, str_num, portMAX_DELAY)); 
+            }else if(format[curr_ch + 1] == 'c'){
+                str = va_arg(ap, char *);
+                out_ch[0] = str[0];
+        	    while (!xQueueSendToBack(serial_str_queue, out_ch, portMAX_DELAY)); 
+			}else if(format[curr_ch + 1] == '%'){
+        	    while (!xQueueSendToBack(serial_str_queue, percentage, portMAX_DELAY)); 
+			}
+			curr_ch++;
+		}else{
+		    out_ch[0] = format[curr_ch];
+    	    while (!xQueueSendToBack(serial_str_queue, &out_ch, portMAX_DELAY));
+		}
+		curr_ch++;
+	}//End of while
+	va_end(ap);
+}
+
 
 
 int
@@ -157,7 +224,8 @@ void shell_task(void *pvParameters)
     char newLine[3] = {'\r', '\n', '\0'};
     char backspace[4] = {'\b', ' ', '\b', '\0'};
     char noCMD[] = "Command not found\0";
-    char title[] = ":$ ";
+    char MCU[] = "stm32";
+    char user[] = "pJay";
     char hello[] = "Hello World!!!!";
     char ps_title[] = "PID\tstatus\t\tpriority\n\r";
     char ch;
@@ -178,8 +246,8 @@ void shell_task(void *pvParameters)
         curr_char = 0;
         done = 0;
         str[0] = '\0';
-
-	    while (!xQueueSendToBack(serial_str_queue, &title, portMAX_DELAY));
+        
+        MYprintf("%s @ %s :$ ", user, MCU);
         
         do {
             /* Receive a byte from the RS232 port
@@ -202,16 +270,16 @@ void shell_task(void *pvParameters)
                 case ECHO:
                     str[curr_char++] = ch;
                     echo_str[0] = ch;
-		            while (!xQueueSendToBack(serial_str_queue, &echo_str, portMAX_DELAY));
+                    MYprintf("%c", echo_str);
                     break;
                 case BACKSPACE:
-                    while (!xQueueSendToBack(serial_str_queue, &backspace, portMAX_DELAY));
+                    MYprintf("%s", backspace);
                     curr_char--;
                     str[curr_char] = '\0';
                     break;
                 case ENTER:
                     str[curr_char] = '\0';
-                    while (!xQueueSendToBack(serial_str_queue, &newLine, portMAX_DELAY));
+                    MYprintf("%s", newLine);
                     done = -1;	
                     break;
                     default:;
@@ -230,37 +298,17 @@ void shell_task(void *pvParameters)
                 curr_char++;
             }//End of while
             str[curr_char - 5] = '\0';
-
-            while (!xQueueSendToBack(serial_str_queue, &str, portMAX_DELAY));
+            MYprintf("%s", str);
                     
         }else if(!strncmp(str,"ps", 2)){
-#if 0            
-            char tmp[16];
-            int i;
-            write(fdout, "-----------------------------\n\r\0",strLength("-----------------------------\n\r\0"));
-            write(fdout, &ps_title, strLength(ps_title));	
-            for(i = 0; i < task_count; i++) {
-                        
-                itoa(tasks[i].pid, tmp);
-                write(fdout, &tmp, strLength(tmp));
-                write(fdout, "\t", strLength("\t"));
-        
-                write(fdout, get_task_status(tasks[i].status), strLength(get_task_status(tasks[i].status)));
-                write(fdout, "\t", strLength("\t"));
-
-                itoa(tasks[i].priority, tmp);
-                write(fdout, &tmp, strLength(tmp));
-
-                write(fdout, &newLine, strLength(newLine));
-            }//End of for
-#endif            
+ 
         }else if(!strncmp(str,"hello", 5)){
-            while (!xQueueSendToBack(serial_str_queue, &hello, portMAX_DELAY));
+            MYprintf("%s", hello);
         }else{
-            while (!xQueueSendToBack(serial_str_queue, &noCMD, portMAX_DELAY));
+            MYprintf("%s", noCMD);
         }//End of if
         
-        while (!xQueueSendToBack(serial_str_queue, &newLine, portMAX_DELAY));
+        MYprintf("%s", newLine);
 
     }//End of while
 }
