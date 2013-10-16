@@ -81,8 +81,7 @@ void MYprintf(const char *format, ...){
 				Myitoa(va_arg(ap, int), str_num);
         	    while (!xQueueSendToBack(serial_str_queue, str_num, portMAX_DELAY)); 
             }else if(format[curr_ch + 1] == 'c'){
-                str = va_arg(ap, char *);
-                out_ch[0] = str[0];
+                out_ch[0] = (char)va_arg(ap, int);
         	    while (!xQueueSendToBack(serial_str_queue, out_ch, portMAX_DELAY)); 
 			}else if(format[curr_ch + 1] == '%'){
         	    while (!xQueueSendToBack(serial_str_queue, percentage, portMAX_DELAY)); 
@@ -90,7 +89,7 @@ void MYprintf(const char *format, ...){
 			curr_ch++;
 		}else{
 		    out_ch[0] = format[curr_ch];
-    	    while (!xQueueSendToBack(serial_str_queue, &out_ch, portMAX_DELAY));
+    	    while (!xQueueSendToBack(serial_str_queue, out_ch, portMAX_DELAY));
 		}
 		curr_ch++;
 	}//End of while
@@ -218,7 +217,6 @@ void shell_task(void *pvParameters)
 {
     serial_str_msg msg;
     char str[100];
-    char echo_str[2] = {'\0', '\0'};
     char cmd_str[10];
     char data_str[100];
     char newLine[3] = {'\r', '\n', '\0'};
@@ -241,12 +239,11 @@ void shell_task(void *pvParameters)
     }key_type;
     key_type key;
 
-
     while (1) {
         curr_char = 0;
         done = 0;
         str[0] = '\0';
-        
+       
         MYprintf("%s @ %s :$ ", user, MCU);
         
         do {
@@ -269,8 +266,7 @@ void shell_task(void *pvParameters)
             switch(key){
                 case ECHO:
                     str[curr_char++] = ch;
-                    echo_str[0] = ch;
-                    MYprintf("%c", echo_str);
+                    MYprintf("%c", ch);
                     break;
                 case BACKSPACE:
                     MYprintf("%s", backspace);
