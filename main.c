@@ -239,11 +239,13 @@ void shell_task(void *pvParameters)
     }key_type;
     key_type key;
 
+  
     while (1) {
         curr_char = 0;
         done = 0;
         str[0] = '\0';
        
+
         MYprintf("%s @ %s :$ ", user, MCU);
         
         do {
@@ -297,7 +299,10 @@ void shell_task(void *pvParameters)
             MYprintf("%s", str);
                     
         }else if(!strncmp(str,"ps", 2)){
- 
+            portCHAR buf[100];    
+            vTaskList(buf);
+            MYprintf("Name\t\t\tState  Priority Stack  Num");
+            MYprintf("%s", buf);            
         }else if(!strncmp(str,"hello", 5)){
             MYprintf("%s", hello);
         }else{
@@ -334,7 +339,7 @@ int main()
 
     /* Create a task to write messages from the queue to the RS232 port. */
 	xTaskCreate(rs232_Tx_msg_task,
-	            (signed portCHAR *) "Serial Tx Str from queue",
+	            (signed portCHAR *) "Tx Str from queue",
 	            512 /* stack size */, NULL, tskIDLE_PRIORITY + 2, NULL);
 
 	xTaskCreate(shell_task,
