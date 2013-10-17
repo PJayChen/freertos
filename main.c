@@ -35,31 +35,6 @@ typedef struct {
 } serial_ch_msg;
 
 
-//support from 0~999 integer to string
-void Myitoa(int in_num, char *out_str){
-    int tmp1, tmp2, i = 0;
-
-    if(in_num == 0){
-		out_str[i] = '0';
-		i++;
-    }else if(in_num > 0){
-        tmp1 = in_num % 100;
-        if((in_num - tmp1) / 100 != 0){
-        	out_str[i] = '0' + (in_num - tmp1) / 100;
-        	i++;
-		}
-		tmp2 = in_num % 10;
-		if((tmp1 - tmp2) / 10 != 0){
-            out_str[i] = '0' + (tmp1 - tmp2) / 10;
-            i++;
-		}
-        out_str[i] = '0' + tmp2;
-        i++;
-    }
-    out_str[i] = '\0';
-}
-
-
 /*simple printf, support int, char and string*/
 void MYprintf(const char *format, ...){
 	va_list ap;
@@ -94,19 +69,6 @@ void MYprintf(const char *format, ...){
 		curr_ch++;
 	}//End of while
 	va_end(ap);
-}
-
-
-
-int
-strncmp(const char *s1, const char *s2, size_t n)
-{
-    for ( ; n > 0; s1++, s2++, --n)
-	if (*s1 != *s2)
-	    return ((*(unsigned char *)s1 < *(unsigned char *)s2) ? -1 : +1);
-	else if (*s1 == '\0')
-	    return 0;
-    return 0;
 }
 
 
