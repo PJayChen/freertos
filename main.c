@@ -53,11 +53,14 @@ void MYprintf(const char *format, ...){
         	    while (!xQueueSendToBack(serial_str_queue, str, portMAX_DELAY)); 
         	    //parameter(...,The address of a pointer that point to the string which been put in queue,...)
 			}else if(format[curr_ch + 1] == 'd'){
-				Myitoa(va_arg(ap, int), str_num);
+				itoa(va_arg(ap, int), str_num);
         	    while (!xQueueSendToBack(serial_str_queue, str_num, portMAX_DELAY)); 
             }else if(format[curr_ch + 1] == 'c'){
                 out_ch[0] = (char)va_arg(ap, int);
         	    while (!xQueueSendToBack(serial_str_queue, out_ch, portMAX_DELAY)); 
+           }else if(format[curr_ch + 1] == 'x'){
+                xtoa(va_arg(ap, int), str_num);
+        	    while (!xQueueSendToBack(serial_str_queue, str_num, portMAX_DELAY)); 
 			}else if(format[curr_ch + 1] == '%'){
         	    while (!xQueueSendToBack(serial_str_queue, percentage, portMAX_DELAY)); 
 			}
@@ -174,6 +177,60 @@ void rs232_Tx_msg_task(void *pvParameters)
 	}
 }
 
+#define num_cmd 5
+void echo(int curr_char, char *str);
+void ps(int curr_char, char *str);
+void hello(int curr_char, char *str);
+void hs(int curr_char, char *str);
+void help(int curr_char, char *str);
+
+typedef struct{
+    char *name;       //command name
+    char *descri;     //describe the command 
+    void (*funt)(int curr_char, char *str);       //point to where the command function is
+}command;
+
+command cmd[5] = { {"echo", "return the key in string.", echo}, 
+                   {"ps", "print the all task and its information." , ps},
+                   {"hello", "Hello World!!", hello},
+                   {"hs", "print max and free heap size" , hs},
+                   {"help", "Where you are", help}      
+                 };
+
+/*function of every command*/
+void echo(int curr_char, char *str){
+    //remove the "echo " in the str[]
+    curr_char = 5;
+    while(str[curr_char] != '\0'){
+        str[curr_char - 5] = str[curr_char];
+        curr_char++;
+    }//End of while
+    str[curr_char - 5] = '\0';
+    MYprintf("%s", str);
+}
+
+void ps(int curr_char, char *str){
+    portCHAR buf[100];    
+    vTaskList(buf);
+    MYprintf("Name\t\t\tState  Priority Stack  Num");
+    MYprintf("%s", buf);       
+}
+
+void hello(int curr_char, char *str){
+    MYprintf("%s", hello);
+}
+
+void hs(int curr_char, char *str){
+    //heap size
+    MYprintf("Maximun size: %d (%x) byte\n\r", configTOTAL_HEAP_SIZE, configTOTAL_HEAP_SIZE);
+    MYprintf("Free Heap Size: %d (%x) byte\n\r", xPortGetFreeHeapSize(), xPortGetFreeHeapSize());	 
+}
+
+void help(int curr_char, char *str){
+    int i = -1;    
+    while(i++ < num_cmd-1)
+        MYprintf("%s\t%s \n\r", cmd[i].name, cmd[i].descri);
+}
 
 void shell_task(void *pvParameters)
 {
@@ -189,9 +246,7 @@ void shell_task(void *pvParameters)
     char hello[] = "Hello World!!!!";
     char ps_title[] = "PID\tstatus\t\tpriority\n\r";
     char ch;
-    int curr_char;
-    int count;
-    int done;
+    int curr_char, i, done;
 
     typedef enum{
             NONE,       //default
@@ -201,23 +256,18 @@ void shell_task(void *pvParameters)
     }key_type;
     key_type key;
 
-  
     while (1) {
         curr_char = 0;
         done = 0;
         str[0] = '\0';
        
-
         MYprintf("%s @ %s :$ ", user, MCU);
         
         do {
-            /* Receive a byte from the RS232 port
-             */
+            // Receive a byte from the RS232 port            
             ch = receive_byte();
 
-            /* Checking input char
-             */
-                        
+            // Checking input char                                     
             if (curr_char >= 98 || (ch == '\r') || (ch == '\n')) {
                 key = ENTER;	
             }
@@ -247,34 +297,17 @@ void shell_task(void *pvParameters)
 
         } while (!done);
 
-
-        //------ cmd -------
-
-        if(!strncmp(str,"echo", 4)){
-            //remove the "echo " in the str[]
-            curr_char = 5;
-            while(str[curr_char] != '\0'){
-                str[curr_char - 5] = str[curr_char];
-                curr_char++;
-            }//End of while
-            str[curr_char - 5] = '\0';
-            MYprintf("%s", str);
-                    
-        }else if(!strncmp(str,"ps", 2)){
-            portCHAR buf[100];    
-            vTaskList(buf);
-            MYprintf("Name\t\t\tState  Priority Stack  Num");
-            MYprintf("%s", buf);            
-        }else if(!strncmp(str,"hello", 5)){
-            MYprintf("%s", hello);
-        }else{
-            MYprintf("%s", noCMD);
-        }//End of if
-        
+        //------ check cmd -------
+        for(i = 0; i < num_cmd ; i++){
+            if(!strncmp(str, cmd[i].name, strlen(cmd[i].name) ) ){
+                cmd[i].funt(curr_char, str);
+                break;
+            }
+        }       
         MYprintf("%s", newLine);
-
     }//End of while
-}
+}//End of shell_task(void *pvParameters)
+
 
 int main()
 {
