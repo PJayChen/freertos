@@ -88,50 +88,47 @@ strncmp(const char *s1, const char *s2, size_t n)
     return 0;
 }
 
-
 #define MaxDigit 6
-//Utilize the concept of long division to implement
-void xtoa(int in_num, char *out_str){
-    
-	int digit = MaxDigit;
+/*
+* Critical part of itoa and xtoa
+* Utilize the concept of long division to implement
+*/
+void _toa(int in_num, char *out_str, int base, int digit){
+	
+    int Mdigit = digit;
     out_str[digit--] = '\0';
-
     while(in_num > 0){
 
-        if(in_num % 16 >= 10)
-            out_str[digit--] = (in_num % 16) + 'A' - 10;
+        if(base == 16 && in_num % base >= 10)
+            out_str[digit--] = (in_num % base) + 'A' - 10;
         else
-            out_str[digit--] = (in_num % 16) + '0';
+            out_str[digit--] = (in_num % base) + '0';
         
-        in_num /= 16;
-    }
-    out_str[digit--] = 'x';
-    out_str[digit--] = '0';
-    	
+        in_num /= base;
+    }//End of while(in_num > 0)
+    
+    if(base == 16){
+        out_str[digit--] = 'x';
+        out_str[digit--] = '0';
+    }    
+
 	digit++;
     //reorder
     int j = 0;
-    while(digit < MaxDigit + 1){
+    while(digit < Mdigit + 1){
         out_str[j++] = out_str[digit++];
     } 
 }
 
-//Utilize the concept of long division to implement
-void Myitoa(int in_num, char *out_str){
-    int digit = MaxDigit; //set maximun digit
+void xtoa(int in_num, char *out_str){
+    
+    _toa(in_num, out_str, 16, MaxDigit + 4);//MaxDigit + 4 that can contain address
+}
 
-    out_str[digit--] = '\0';
-    while(in_num > 0){
-        out_str[digit--] = (in_num % 10) + '0';
-        in_num /= 10;
-    }
 
-    digit++;
-    //reorder
-    int j = 0;
-    while(digit < MaxDigit + 1){
-        out_str[j++] = out_str[digit++];
-    }    
+void itoa(int in_num, char *out_str){
+   
+    _toa(in_num, out_str, 10, MaxDigit);
 }
 
 
@@ -223,7 +220,7 @@ static int base_printf(proc_str_func_t proc_str, \
                 case 'u':
                     {
                        param_int = va_arg(param, int);
-                       Myitoa(param_int, str_to_output);
+                       itoa(param_int, str_to_output);
                        //str_to_output = itoa(param_int);
                     }
                     break;
