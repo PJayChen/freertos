@@ -88,30 +88,51 @@ strncmp(const char *s1, const char *s2, size_t n)
     return 0;
 }
 
-//support from 0~999 integer to string
-void Myitoa(int in_num, char *out_str){
-    int tmp1, tmp2, i = 0;
 
-    if(in_num == 0){
-		out_str[i] = '0';
-		i++;
-    }else if(in_num > 0){
-        tmp1 = in_num % 100;
-        if((in_num - tmp1) / 100 != 0){
-        	out_str[i] = '0' + (in_num - tmp1) / 100;
-        	i++;
-		}
-		tmp2 = in_num % 10;
-		if((tmp1 - tmp2) / 10 != 0){
-            out_str[i] = '0' + (tmp1 - tmp2) / 10;
-            i++;
-		}
-        out_str[i] = '0' + tmp2;
-        i++;
+#define MaxDigit 6
+//Utilize the concept of long division to implement
+void xtoa(int in_num, char *out_str){
+    
+	int digit = MaxDigit;
+    out_str[digit--] = '\0';
+
+    while(in_num > 0){
+
+        if(in_num % 16 >= 10)
+            out_str[digit--] = (in_num % 16) + 'A' - 10;
+        else
+            out_str[digit--] = (in_num % 16) + '0';
+        
+        in_num /= 16;
     }
-    out_str[i] = '\0';
+    out_str[digit--] = 'x';
+    out_str[digit--] = '0';
+    	
+	digit++;
+    //reorder
+    int j = 0;
+    while(digit < MaxDigit + 1){
+        out_str[j++] = out_str[digit++];
+    } 
 }
 
+//Utilize the concept of long division to implement
+void Myitoa(int in_num, char *out_str){
+    int digit = MaxDigit; //set maximun digit
+
+    out_str[digit--] = '\0';
+    while(in_num > 0){
+        out_str[digit--] = (in_num % 10) + '0';
+        in_num /= 10;
+    }
+
+    digit++;
+    //reorder
+    int j = 0;
+    while(digit < MaxDigit + 1){
+        out_str[j++] = out_str[digit++];
+    }    
+}
 
 
 
