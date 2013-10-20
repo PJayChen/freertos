@@ -178,11 +178,11 @@ void rs232_Tx_msg_task(void *pvParameters)
 }
 
 #define num_cmd 5
-void echo(int curr_char, char *str);
-void ps(int curr_char, char *str);
-void hello(int curr_char, char *str);
-void hs(int curr_char, char *str);
-void help(int curr_char, char *str);
+void echo_str(int curr_char, char *str);
+void show_ps(int curr_char, char *str);
+void show_hello(int curr_char, char *str);
+void show_heap_size(int curr_char, char *str);
+void show_help(int curr_char, char *str);
 
 typedef struct{
     char *name;       //command name
@@ -190,15 +190,15 @@ typedef struct{
     void (*funt)(int curr_char, char *str);       //point to where the command function is
 }command;
 
-command cmd[5] = { {"echo", "return the key in string.", echo}, 
-                   {"ps", "print the all task and its information." , ps},
-                   {"hello", "Hello World!!", hello},
-                   {"hs", "print max and free heap size" , hs},
-                   {"help", "Where you are", help}      
-                 };
+command cmd[num_cmd] = {   {"echo", "return the key in string.", echo_str}, 
+                           {"ps", "print the all task and its information." , show_ps},
+                           {"hello", "Hello World!!", show_hello},
+                           {"meminfo", "print max and free heap size" , show_heap_size},
+                           {"help", "Where you are", show_help}      
+                       };
 
 /*function of every command*/
-void echo(int curr_char, char *str){
+void echo_str(int curr_char, char *str){
     //remove the "echo " in the str[]
     curr_char = 5;
     while(str[curr_char] != '\0'){
@@ -209,33 +209,41 @@ void echo(int curr_char, char *str){
     MYprintf("%s", str);
 }
 
-void ps(int curr_char, char *str){
+void show_ps(int curr_char, char *str){
     portCHAR buf[100];    
     vTaskList(buf);
     MYprintf("Name\t\t\tState  Priority Stack  Num");
     MYprintf("%s", buf);       
 }
 
-void hello(int curr_char, char *str){
-    MYprintf("%s", hello);
+void show_hello(int curr_char, char *str){
+    MYprintf("Hello World!!!!");
 }
 
-void hs(int curr_char, char *str){
+void show_heap_size(int curr_char, char *str){
     //heap size
     MYprintf("Maximun size: %d (%x) byte\n\r", configTOTAL_HEAP_SIZE, configTOTAL_HEAP_SIZE);
     MYprintf("Free Heap Size: %d (%x) byte\n\r", xPortGetFreeHeapSize(), xPortGetFreeHeapSize());	 
 }
 
-void help(int curr_char, char *str){
+void show_help(int curr_char, char *str){
     int i = -1;    
     while(i++ < num_cmd-1)
-        MYprintf("%s\t%s \n\r", cmd[i].name, cmd[i].descri);
+        MYprintf("%s\t\t%s \n\r", cmd[i].name, cmd[i].descri);
 }
+
+typedef enum{
+        NONE,       //default
+        ECHO ,      //echo the input char
+        ENTER,      //type enter
+        BACKSPACE,  //type backspace
+}key_type;
+
 
 void shell_task(void *pvParameters)
 {
     serial_str_msg msg;
-    char str[100];
+    char *str;
     char cmd_str[10];
     char data_str[100];
     char newLine[3] = {'\r', '\n', '\0'};
@@ -243,18 +251,13 @@ void shell_task(void *pvParameters)
     char noCMD[] = "Command not found\0";
     char MCU[] = "stm32";
     char user[] = "pJay";
-    char hello[] = "Hello World!!!!";
     char ps_title[] = "PID\tstatus\t\tpriority\n\r";
     char ch;
     int curr_char, i, done;
 
-    typedef enum{
-            NONE,       //default
-            ECHO ,      //echo the input char
-            ENTER,      //type enter
-            BACKSPACE,  //type backspace
-    }key_type;
     key_type key;
+    
+    str = (char*) pvPortMalloc(sizeof(char));
 
     while (1) {
         curr_char = 0;
@@ -303,7 +306,8 @@ void shell_task(void *pvParameters)
                 cmd[i].funt(curr_char, str);
                 break;
             }
-        }       
+        }
+        vPortFree(str);           
         MYprintf("%s", newLine);
     }//End of while
 }//End of shell_task(void *pvParameters)
