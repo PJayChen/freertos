@@ -177,27 +177,27 @@ void rs232_Tx_msg_task(void *pvParameters)
 	}
 }
 
-#define NUM_CMD 6
+
 void echo_str(int curr_char, char *str);
 void show_ps(int curr_char, char *str);
 void show_hello(int curr_char, char *str);
 void show_heap_size(int curr_char, char *str);
 void show_help(int curr_char, char *str);
-void alco_mem(int curr_char, char *str);
+void mem_allco(int curr_char, char *str);
 
 typedef struct{
-    char *name;       //command name
-    char *descri;     //describe the command 
+    char *name;                                   //command name
+    char *descri;                                 //describe the command 
     void (*funt)(int curr_char, char *str);       //point to where the command function is
 }command;
 
-command cmd[NUM_CMD] = {   {"echo", "echo [string], return the string.", echo_str}, 
+command cmd[] = {   {"echo", "echo [string], return the string.", echo_str}, 
                            {"ps", "print the all task and its information." , show_ps},
                            {"hello", "Hello World!!", show_hello},
                            {"meminfo", "print max and free heap size" , show_heap_size},
                            {"help", "Where you are", show_help},      
-                           {"memtest", "memtest [int], allocate memory" , alco_mem}
-                       };
+                           {"memtest", "memtest [int], allocate memory" , mem_allco}
+                 };
 
 /*function of every command*/
 void echo_str(int curr_char, char *str){
@@ -211,9 +211,13 @@ void echo_str(int curr_char, char *str){
     MYprintf("%s", str);
 }
 
-void alco_mem(int curr_char, char *str){
+
+
+
+void mem_allco(int curr_char, char *str){
     int num;
     char *s, *s1;
+  
     //remove the "memtest " in the str[]
     curr_char = 8;
     while(str[curr_char] != '\0'){
@@ -227,8 +231,8 @@ void alco_mem(int curr_char, char *str){
     MYprintf("Allocate %d byte\n\r", num);
     MYprintf("allocated address from \n\r%x\n\r", s);
     MYprintf("to \n\r%x\n\r", s1);
-    //vPortFree(s);
-    //vPortFree(s1);
+    vPortFree(s);
+    vPortFree(s1);
 }
 
 void show_ps(int curr_char, char *str){
@@ -249,8 +253,8 @@ void show_heap_size(int curr_char, char *str){
 }
 
 void show_help(int curr_char, char *str){
-    int i = -1;    
-    while(i++ < NUM_CMD-1)
+    int i = 0;    
+    while(i++ < sizeof(cmd)/sizeof(*cmd) - 1)
         MYprintf("%s\t\t%s \n\r", cmd[i].name, cmd[i].descri);
 }
 
@@ -279,16 +283,10 @@ void shell_task(void *pvParameters)
 
     key_type key;
     
-    MYprintf("%d\n\r",sizeof(int));
-    str = (char*) pvPortMalloc(sizeof(char)*20000);
-    MYprintf("%x\n\r",str);
-    str = (char*) pvPortMalloc(sizeof(char));
-    MYprintf("%x\n\r",str);
-    str = (char*) pvPortMalloc(sizeof(int));
-    MYprintf("%x\n\r",str);
-    str = (char*) pvPortMalloc(sizeof(int));
-    MYprintf("%x\n\r",str);        
-
+    
+    MYprintf("%x \n\r", sizeof(cmd)/sizeof(*cmd));
+    str = (char *) pvPortMalloc(sizeof(char) * 100);
+    
     while (1) {
         curr_char = 0;
         done = 0;
@@ -331,8 +329,8 @@ void shell_task(void *pvParameters)
         } while (!done);
 
         //------ check cmd -------
-        for(i = 0; i < NUM_CMD + 1 ; i++){
-            if( i == NUM_CMD ){
+        for(i = 0; i < sizeof(cmd)/sizeof(*cmd) + 1 ; i++){
+            if( i == sizeof(cmd)/sizeof(*cmd) ){
                 MYprintf("%s", noCMD);
                 break;
             }else if(!strncmp(str, cmd[i].name, strlen(cmd[i].name) ) ){
