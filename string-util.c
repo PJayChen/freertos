@@ -87,15 +87,28 @@ int strncmp(const char *s1, const char *s2, size_t n)
     return 0;
 }
 
+int atoi(const char *str){
+        int result = 0;
+        while (*str != '\0'){
+                result = result * 10;
+                result = result + *str - '0';
+                str++;
+        }
+        return result;
+}
+
 #define MaxDigit 6
 /*
-* Critical part of itoa and xtoa
+* Main part of itoa and xtoa
 * Utilize the concept of long division to implement
 */
 void _toa(int in_num, char *out_str, int base, int digit){
 	
     int Mdigit = digit;
     out_str[digit--] = '\0';
+    
+    if(in_num == 0) out_str[digit--] = '0';
+    
     while(in_num > 0){
 
         if(base == 16 && in_num % base >= 10)
@@ -186,8 +199,11 @@ static int base_printf(proc_str_func_t proc_str, \
 {
     char param_chr[] = {0, 0};
     int param_int = 0;
+    
+    long int param_lint = 0;
 
     char *str_to_output = 0;
+    char itoa_buf[20] = {0};
     int curr_char = 0;
 
     /* Make sure strlen(dest) is 0
@@ -220,15 +236,22 @@ static int base_printf(proc_str_func_t proc_str, \
                     {
                        param_int = va_arg(param, int);
                        itoa(param_int, str_to_output);
-                       //str_to_output = itoa(param_int);
                     }
                     break;
 
                 case 'X':
                 case 'x':
                     {
-                       //param_int = va_arg(param, int);
-                       //str_to_output = htoa(param_int);
+                       param_int = va_arg(param, int);
+                       xtoa(param_int, str_to_output);
+                    }
+                    break;
+
+                case 'P':
+                case 'p':
+                    {
+                       param_lint = va_arg(param, long int);
+                       xtoa(param_int, str_to_output);
                     }
                     break;
 
@@ -265,5 +288,6 @@ int sprintf(char *str, const char *format, ...)
 
     return rval;
 }
+
 
 
