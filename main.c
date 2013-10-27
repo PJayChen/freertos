@@ -23,6 +23,10 @@ static void setup_hardware();
 volatile xSemaphoreHandle serial_tx_wait_sem = NULL;
 volatile xQueueHandle serial_str_queue = NULL;
 volatile xQueueHandle serial_rx_queue = NULL;
+xTaskHandle xHandle_mmtest;
+xTaskHandle xHandle_shell;
+xTaskHandle xHandle_txMsg;
+
 
 /* Queue structure used for passing messages. */
 typedef struct {
@@ -35,12 +39,91 @@ typedef struct {
 } serial_ch_msg;
 
 
+
+void send_byte(char ch)
+{
+	/* Wait until the RS232 port can receive another byte (this semaphore
+	 * is "given" by the RS232 port interrupt when the buffer has room for
+	 * another byte.
+	 */
+	while (!xSemaphoreTake(serial_tx_wait_sem, portMAX_DELAY));
+
+	/* Send the byte and enable the transmit interrupt (it is disabled by
+	 * the interrupt).
+	 */
+	USART_SendData(USART2, ch);
+	USART_ITConfig(USART2, USART_IT_TXE, ENABLE);
+}
+
+void send_str(char *str){
+
+    while( *str != '\0')
+        send_byte(*str++);
+
+}
+
+char receive_byte()
+{
+	serial_ch_msg msg;
+
+	/* Wait for a byte to be queued by the receive interrupts handler. */
+	while (!xQueueReceive(serial_rx_queue, &msg, portMAX_DELAY));
+
+	return msg.ch;
+}
+
+void qprintf(xQueueHandle tx_queue, const char *format, ...){
+	va_list ap;
+	va_start(ap, format);
+	int curr_ch = 0;
+	char out_ch[2] = {'\0', '\0'};
+	char newLine[3] = {'\n' , '\r', '\0'};
+	char percentage[] = "%";
+	char *str;
+	char str_num[10];
+	int out_int;
+
+    /* Block for 1ms. */
+     const portTickType xDelay = 0.1; // portTICK_RATE_MS;
+
+	while( format[curr_ch] != '\0' ){
+	    vTaskDelay( xDelay ); 
+		if(format[curr_ch] == '%'){
+			if(format[curr_ch + 1] == 's'){
+				str = va_arg(ap, char *);
+        	    while (!xQueueSendToBack(tx_queue, str, portMAX_DELAY)); 
+        	    //parameter(...,The address of a string which is put in the queue,...)
+			}else if(format[curr_ch + 1] == 'd'){
+				itoa(va_arg(ap, int), str_num);
+        	    while (!xQueueSendToBack(tx_queue, str_num, portMAX_DELAY)); 				
+            }else if(format[curr_ch + 1] == 'c'){
+                out_ch[0] = (char)va_arg(ap, int);
+        	    while (!xQueueSendToBack(tx_queue, out_ch, portMAX_DELAY)); 								  
+           }else if(format[curr_ch + 1] == 'x'){
+                xtoa(va_arg(ap, int), str_num);
+        	    while (!xQueueSendToBack(tx_queue, str_num, portMAX_DELAY)); 								       
+			}else if(format[curr_ch + 1] == '%'){
+        	    while (!xQueueSendToBack(tx_queue, percentage, portMAX_DELAY)); 								   
+			}
+			curr_ch++;
+		}else if(format[curr_ch] == '\n'){
+    	    while (!xQueueSendToBack(tx_queue, newLine, portMAX_DELAY));
+		}else{
+		    out_ch[0] = format[curr_ch];
+    	    while (!xQueueSendToBack(tx_queue, out_ch, portMAX_DELAY));		    
+		}
+		curr_ch++;
+	}//End of while
+	va_end(ap);
+}
+
 /*simple printf, support int, char and string*/
 void MYprintf(const char *format, ...){
 	va_list ap;
 	va_start(ap, format);
 	int curr_ch = 0;
 	char out_ch[2] = {'\0', '\0'};
+	char newLine[3] = {'\n' , '\r', '\0'};
 	char percentage[] = "%";
 	char *str;
 	char str_num[10];
@@ -50,24 +133,27 @@ void MYprintf(const char *format, ...){
 		if(format[curr_ch] == '%'){
 			if(format[curr_ch + 1] == 's'){
 				str = va_arg(ap, char *);
-        	    while (!xQueueSendToBack(serial_str_queue, str, portMAX_DELAY)); 
-        	    //parameter(...,The address of a pointer that point to the string which been put in queue,...)
+				send_str(str);
+        	    //while (!xQueueSendToBack(serial_str_queue, str, portMAX_DELAY)); 
+        	    //parameter(...,The address of a string which is put in the queue,...)
 			}else if(format[curr_ch + 1] == 'd'){
 				itoa(va_arg(ap, int), str_num);
-        	    while (!xQueueSendToBack(serial_str_queue, str_num, portMAX_DELAY)); 
+				send_str(str_num);
             }else if(format[curr_ch + 1] == 'c'){
                 out_ch[0] = (char)va_arg(ap, int);
-        	    while (!xQueueSendToBack(serial_str_queue, out_ch, portMAX_DELAY)); 
+				send_str(out_ch);                
            }else if(format[curr_ch + 1] == 'x'){
                 xtoa(va_arg(ap, int), str_num);
-        	    while (!xQueueSendToBack(serial_str_queue, str_num, portMAX_DELAY)); 
+				send_str(str_num);                
 			}else if(format[curr_ch + 1] == '%'){
-        	    while (!xQueueSendToBack(serial_str_queue, percentage, portMAX_DELAY)); 
+				send_str(percentage);   
 			}
 			curr_ch++;
+		}else if(format[curr_ch] == '\n'){
+			send_str(newLine);
 		}else{
 		    out_ch[0] = format[curr_ch];
-    	    while (!xQueueSendToBack(serial_str_queue, out_ch, portMAX_DELAY));
+			send_str(out_ch);		    
 		}
 		curr_ch++;
 	}//End of while
@@ -132,30 +218,8 @@ void read_romfs_task(void *pvParameters)
 	while (1);
 }
 
-void send_byte(char ch)
-{
-	/* Wait until the RS232 port can receive another byte (this semaphore
-	 * is "given" by the RS232 port interrupt when the buffer has room for
-	 * another byte.
-	 */
-	while (!xSemaphoreTake(serial_tx_wait_sem, portMAX_DELAY));
 
-	/* Send the byte and enable the transmit interrupt (it is disabled by
-	 * the interrupt).
-	 */
-	USART_SendData(USART2, ch);
-	USART_ITConfig(USART2, USART_IT_TXE, ENABLE);
-}
 
-char receive_byte()
-{
-	serial_ch_msg msg;
-
-	/* Wait for a byte to be queued by the receive interrupts handler. */
-	while (!xQueueReceive(serial_rx_queue, &msg, portMAX_DELAY));
-
-	return msg.ch;
-}
 
 void rs232_Tx_msg_task(void *pvParameters)
 {
@@ -184,6 +248,8 @@ void show_hello(int curr_char, char *str);
 void show_heap_size(int curr_char, char *str);
 void show_help(int curr_char, char *str);
 void mem_allco(int curr_char, char *str);
+void mm_test(int curr_char, char *str);
+
 
 typedef struct{
     char *name;                                   //command name
@@ -196,7 +262,8 @@ command cmd[] = {   {"echo", "echo [string], return the string.", echo_str},
                            {"hello", "Hello World!!", show_hello},
                            {"meminfo", "print max and free heap size" , show_heap_size},
                            {"help", "Where you are", show_help},      
-                           {"memtest", "memtest [int], allocate memory" , mem_allco}
+                           {"memtest", "memtest [int], allocate memory" , mem_allco},
+                           {"mmtest", "memory allocate test", mm_test}                    
                  };
 
 /*function of every command*/
@@ -211,6 +278,116 @@ void echo_str(int curr_char, char *str){
     MYprintf("%s", str);
 }
 
+void mm_test(int curr_char, char *str){
+
+
+    vTaskResume( xHandle_txMsg );
+}
+
+
+struct slot {
+    void *pointer;
+    unsigned int size;
+    unsigned int lfsr;
+};
+
+#define CIRCBUFSIZE 60
+unsigned int write_pointer = 0, read_pointer = 0;
+static struct slot slots[CIRCBUFSIZE];
+static unsigned int lfsr = 0xACE1;
+
+static unsigned int circbuf_size(void)
+{
+    return (write_pointer + CIRCBUFSIZE - read_pointer) % CIRCBUFSIZE;
+}
+
+static void write_cb(struct slot foo)
+{
+    if (circbuf_size() == CIRCBUFSIZE - 1) {
+        MYprintf("circular buffer overflow\n\r");
+        vTaskDelete(NULL); 
+
+    }
+    slots[write_pointer++] = foo;
+    write_pointer %= CIRCBUFSIZE;
+}
+
+static struct slot read_cb(void)
+{
+    struct slot foo;
+    if (write_pointer == read_pointer) {
+        // circular buffer is empty
+        return (struct slot){ .pointer=NULL, .size=0, .lfsr=0 };
+    }
+    foo = slots[read_pointer++];
+    read_pointer %= CIRCBUFSIZE;
+    return foo;
+}
+
+// Get a pseudorandom number generator from Wikipedia
+static int prng(void)
+{
+    static unsigned int bit;
+    /* taps: 16 14 13 11; characteristic polynomial: x^16 + x^14 + x^13 + x^11 + 1 */
+    bit  = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5) ) & 1;
+    lfsr =  (lfsr >> 1) | (bit << 15);
+    return lfsr & 0xffff;
+}
+
+
+void mem_test_task(void *pvParameters){
+
+    int i, size;
+    char *p;
+    int j = 0;
+    char str[50];
+    /* Block for 0.1ms. */
+    const portTickType xDelay = 10; // portTICK_RATE_MS;
+
+    while (j < 5) {
+     
+        j++;
+	    vTaskDelay( xDelay );
+
+        size = prng() & 0x7FF;        
+        size = size >> 2;
+        itoa(size, str);
+        
+        qprintf(serial_str_queue, "try to allocate %d bytes\n", size);
+	   // vTaskDelay( xDelay );
+        p = (char *) pvPortMalloc(size);
+        qprintf(serial_str_queue, "malloc returned %x\n", p);
+        if (p == NULL) {
+            // can't do new allocations until we free some older ones
+            while (circbuf_size() > 0) {
+                // confirm that data didn't get trampled before freeing
+                struct slot foo = read_cb();
+                p = foo.pointer;
+                lfsr = foo.lfsr;  // reset the PRNG to its earlier state
+                size = foo.size;
+        	//    vTaskDelay( xDelay );
+                qprintf(serial_str_queue, "free a block, size %d\n", size);
+                vPortFree(p);
+                if ( (prng() & 1 ) == 0) break;
+            }
+        } else {
+      	  //  vTaskDelay( xDelay );
+            qprintf(serial_str_queue, "allocate a block, size %d\n", size);           
+            //allocate success, store the allocated size, address and lfsr
+            write_cb((struct slot){.pointer=p, .size=size, .lfsr=lfsr});
+            
+            //fill the allocated space with prng()
+            for (i = 0; i < size; i++) {
+                p[i] = (unsigned char) prng();
+            }
+            
+        }//End of if
+    }//End of while
+    //vTaskResume( xHandle_shell );
+
+    vTaskSuspend( NULL );
+
+}
 
 
 
@@ -228,11 +405,16 @@ void mem_allco(int curr_char, char *str){
     num = atoi(str);
     s = (char*) pvPortMalloc(sizeof(char) * num);
     s1 = (char*) pvPortMalloc(sizeof(char));
-    MYprintf("Allocate %d byte\n\r", num);
-    MYprintf("allocated address from \n\r%x\n\r", s);
-    MYprintf("to \n\r%x\n\r", s1);
+    if(s != NULL && s1 != NULL){
+        MYprintf("Allocate %d byte\n", num);
+        MYprintf("allocated address from \n%x\n", s);
+        MYprintf("to \n%x\n", s1);
     vPortFree(s);
     vPortFree(s1);
+    }
+    else{
+        MYprintf("allocate fail\n");
+    }
 }
 
 void show_ps(int curr_char, char *str){
@@ -248,43 +430,43 @@ void show_hello(int curr_char, char *str){
 
 void show_heap_size(int curr_char, char *str){
     //heap size
-    MYprintf("Maximun size: %d (%x) byte\n\r", configTOTAL_HEAP_SIZE, configTOTAL_HEAP_SIZE);
-    MYprintf("Free Heap Size: %d (%x) byte\n\r", xPortGetFreeHeapSize(), xPortGetFreeHeapSize());	 
+    MYprintf("Maximun size: %d (%x) byte\n", configTOTAL_HEAP_SIZE, configTOTAL_HEAP_SIZE);
+    MYprintf("Free Heap Size: %d (%x) byte\n", xPortGetFreeHeapSize(), xPortGetFreeHeapSize());	 
 }
 
 void show_help(int curr_char, char *str){
     int i = 0;    
     while(i++ < sizeof(cmd)/sizeof(*cmd) - 1)
-        MYprintf("%s\t\t%s \n\r", cmd[i].name, cmd[i].descri);
+        MYprintf("%s\t\t%s \n", cmd[i].name, cmd[i].descri);
 }
-
-typedef enum{
-        NONE,       //default
-        ECHO ,      //echo the input char
-        ENTER,      //type enter
-        BACKSPACE,  //type backspace
-}key_type;
 
 
 void shell_task(void *pvParameters)
 {
     serial_str_msg msg;
+
+    typedef enum{
+            NONE,       //default
+            ECHO ,      //echo the input char
+            ENTER,      //type enter
+            BACKSPACE,  //type backspace
+    }key_type;
+    
     char *str;
     char cmd_str[10];
     char data_str[100];
-    char newLine[3] = {'\r', '\n', '\0'};
     char backspace[4] = {'\b', ' ', '\b', '\0'};
-    char noCMD[] = "Command not found\0";
+    char noCMD[] = "Command not found";
     char MCU[] = "stm32";
     char user[] = "pJay";
-    char ps_title[] = "PID\tstatus\t\tpriority\n\r";
     char ch;
     int curr_char, i, done;
 
     key_type key;
+
+//    vTaskSuspend(xHandle_mmtest);
+    MYprintf(">>This shell support %d commands...(help for more detail)\n", sizeof(cmd)/sizeof(*cmd));
     
-    
-    MYprintf("%x \n\r", sizeof(cmd)/sizeof(*cmd));
     str = (char *) pvPortMalloc(sizeof(char) * 100);
     
     while (1) {
@@ -310,6 +492,7 @@ void shell_task(void *pvParameters)
                         
             switch(key){
                 case ECHO:
+                    vTaskSuspend(xHandle_txMsg);
                     str[curr_char++] = ch;
                     MYprintf("%c", ch);
                     break;
@@ -320,7 +503,7 @@ void shell_task(void *pvParameters)
                     break;
                 case ENTER:
                     str[curr_char] = '\0';
-                    MYprintf("%s", newLine);
+                    MYprintf("\n");
                     done = -1;	
                     break;
                     default:;
@@ -333,13 +516,13 @@ void shell_task(void *pvParameters)
             if( i == sizeof(cmd)/sizeof(*cmd) ){
                 MYprintf("%s", noCMD);
                 break;
-            }else if(!strncmp(str, cmd[i].name, strlen(cmd[i].name) ) ){
+            }else if(!strcmp(str, cmd[i].name ) ){
                 cmd[i].funt(curr_char, str);
                 break;
             }
         }
         vPortFree(str);           
-        MYprintf("%s", newLine);
+        MYprintf("\n");
     }//End of while
 }//End of shell_task(void *pvParameters)
 
@@ -355,7 +538,7 @@ int main()
 
 	/* Create the queue used by the serial task.  Messages for write to
 	 * the RS232. */
-	serial_str_queue = xQueueCreate(10, sizeof(serial_str_msg));
+	serial_str_queue = xQueueCreate(15, sizeof(serial_str_msg));
 	vSemaphoreCreateBinary(serial_tx_wait_sem);
 	serial_rx_queue = xQueueCreate(1, sizeof(serial_ch_msg));
 
@@ -370,12 +553,17 @@ int main()
     /* Create a task to write messages from the queue to the RS232 port. */
 	xTaskCreate(rs232_Tx_msg_task,
 	            (signed portCHAR *) "Tx Str from queue",
-	            512 /* stack size */, NULL, tskIDLE_PRIORITY + 2, NULL);
+	            512 /* stack size */, NULL, configMAX_PRIORITIES - 3, &xHandle_txMsg);
 
 	xTaskCreate(shell_task,
 	            (signed portCHAR *) "shell task",
-	            512 /* stack size */, NULL, tskIDLE_PRIORITY + 10, NULL);
+	            512 /* stack size */, NULL, configMAX_PRIORITIES, &xHandle_shell);
 
+	xTaskCreate(mem_test_task,
+	            (signed portCHAR *) "mem test",
+	            512 /* stack size */, NULL, configMAX_PRIORITIES - 3, &xHandle_mmtest);
+
+    vTaskSuspend(xHandle_txMsg);
 	/* Start running the tasks. */
 	vTaskStartScheduler();
 
